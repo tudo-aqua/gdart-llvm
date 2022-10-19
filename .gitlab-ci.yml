@@ -1,0 +1,121 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - build
+  - release
+
+build:
+  stage: build
+  image: $CI_REGISTRY/psyco/gdart/development:21.2.0
+  script:
+    - git submodule update --init --recursive
+
+    # use OpenJDK for compatibility with newer GraalVM version (22.1.0)
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+
+    # build (patched version of) JConstraints (dependency of DSE and tracer)
+    - pushd jconstraints-custom
+    - ./gradlew
+        -x :jconstraints-core:verifyGoogleJavaFormat
+        -x :jconstraints-core:test
+        -x :jconstraints-z3:test
+        -x :jconstraints-cvc4:test
+        publishToMavenLocal
+    - popd
+
+    # build DSE
+    - pushd dse
+    - mvn package
+    - popd
+
+    # build tracer
+    - pushd tracer
+    - mvn package
+    - popd
+
+    # prepare artifact
+    - mkdir -p gdart-llvm/dse/target
+    - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
+    - mkdir -p gdart-llvm/tracer/target
+    - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
+    - mv ./executor.sh gdart-llvm
+    - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
+    - mv ./verifier gdart-llvm
+
+    # print some info about artifact
+    - ls -la gdart-llvm/*
+    - du -h gdart-llvm
+  artifacts:
+    name: "gdart-llvm"
+    paths:
+      - gdart-llvm
+
+
+sv-comp-short:
+  stage: release
+  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  script:
+    - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
+    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
+
+    # install necessary tools (wget)
+    - apt install -qy wget
+
+    # prepare Clang
+    - export CLANG_VERSION=14.0.0
+    - export CLANG_NAME=clang+llvm-${CLANG_VERSION}-x86_64-linux-gnu-ubuntu-18.04
+    - wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
+    - tar -xf ${CLANG_NAME}.tar.xz
+    - export CLANG_PATH=$(realpath ${CLANG_NAME})
+    - rm -r ${CLANG_PATH}/include
+
+    # prepare GraalVM
+    - export GRAALVM_VERSION=22.1.0
+    - export GRAALVM_NAME=graalvm-ce-java11-linux-amd64-${GRAALVM_VERSION}
+    - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/${GRAALVM_NAME}.tar.gz
+    - tar -xzf ${GRAALVM_NAME}.tar.gz
+    - export GRAALVM_PATH=$(realpath ${GRAALVM_NAME/-linux-amd64/})
+
+    # add GraalVM LLVM support (automatic download only works for latest GraalVM version (22.2.0))
+    - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+    - ${GRAALVM_PATH}/lib/installer/bin/gu -L install llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+
+    # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
+    - >
+      echo '<?xml version="1.0"?>
+      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-1.9.dtd">
+        <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
+        <resultfiles>**.graphml</resultfiles>
+        <rundefinition name="sv-comp20_prop-reachsafety_bitvectors">
+          <tasks name="ReachSafety-BitVectors">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-BitVectors.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+        </rundefinition>
+      </benchmark>' > gdart-llvm.xml
+    - cat gdart-llvm.xml
+    - /data/benchexec/contrib/vcloud-benchmark.py
+      --vcloudMaster $VCLOUD_MASTER
+      --vcloudClientHeap 1560
+      --vcloudAdditionalFiles
+        ./gdart-llvm
+        ${CLANG_PATH}
+        ${GRAALVM_PATH}
+        /data/sv-benchmarks/c/ReachSafety-BitVectors.set
+        /data/sv-benchmarks/c/properties/unreach-call.prp
+        /data/sv-benchmarks/c/bitvector
+        /data/sv-benchmarks/c/bitvector-regression
+        /data/sv-benchmarks/c/bitvector-loops
+      --vcloudJar /srv/vcloud/lib/vcloud.jar
+      --no-container
+      --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
+    - $(cat vcloud.run | grep table-generator)
+  artifacts:
+    paths:
+      - results
+  dependencies:
+    - build
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+      when: on_success
