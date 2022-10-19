@@ -5,3 +5,4 @@
 [submodule "dse"]
 	path = dse
 	url = https://github.com/tudo-aqua/dse.git
+	branch = witness
