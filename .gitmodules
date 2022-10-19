@@ -1,0 +1,7 @@
+[submodule "jconstraints-custom"]
+	path = jconstraints-custom
+	url = https://github.com/jk-tud/jconstraints.git
+	branch = gdart-llvm
+[submodule "dse"]
+	path = dse
+	url = https://github.com/tudo-aqua/dse.git
