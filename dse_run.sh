@@ -17,7 +17,7 @@ echo OFFSET="${OFFSET}"
 if [[ -f "/usr/bin/clang" ]]; then
     CLANG_PATH=/usr/bin
 else
-    CLANG_PATH=$(echo ./clang+llvm-*/bin)
+    CLANG_PATH=gdart-llvm/clang+llvm/bin
 fi
 export CLANG_PATH
 echo CLANG_PATH="${CLANG_PATH}"
@@ -25,7 +25,7 @@ echo CLANG_PATH="${CLANG_PATH}"
 if [[ -d "/usr/lib/jvm/java-11-graalvm" ]]; then
     JAVA_HOME=/usr/lib/jvm/java-11-graalvm
 else
-    JAVA_HOME=$(echo ./graalvm-ce-*)
+    JAVA_HOME=gdart-llvm/graalvm-ce
 fi
 export JAVA_HOME
 echo JAVA_HOME="${JAVA_HOME}"

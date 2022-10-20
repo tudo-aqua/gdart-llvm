@@ -34,10 +34,6 @@ build:
     - mvn package
     - popd
 
-    # install necessary tools (wget)
-    - apt-get update
-    - apt-get install -qy wget
-
     # prepare Clang
     - export CLANG_VERSION=14.0.0
     - export CLANG_NAME=clang+llvm-${CLANG_VERSION}-x86_64-linux-gnu-ubuntu-18.04
@@ -62,8 +58,8 @@ build:
     - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
     - mkdir -p gdart-llvm/tracer/target
     - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
-    - mv ${CLANG_PATH} gdart-llvm
-    - mv ${GRAALVM_PATH} gdart-llvm
+    - mv ${CLANG_PATH} gdart-llvm/clang+llvm
+    - mv ${GRAALVM_PATH} gdart-llvm/graalvm-ce
     - mv ./executor.sh gdart-llvm
     - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
     - mv ./verifier gdart-llvm
