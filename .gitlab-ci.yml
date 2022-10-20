@@ -116,3 +116,91 @@ sv-comp-short:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
       when: on_success
+
+sv-comp-full:
+  stage: release
+  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  script:
+    - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
+    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
+
+    # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
+    - >
+      echo '<?xml version="1.0"?>
+      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-1.9.dtd">
+        <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
+        <resultfiles>**.graphml</resultfiles>
+        <rundefinition name="sv-comp20_prop-reachsafety_bitvectors">
+          <tasks name="ReachSafety-Arrays">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Arrays.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-BitVectors">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-BitVectors.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-ControlFlow">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ControlFlow.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-ECA">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ECA.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Floats">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Floats.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Heap">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Heap.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Loops">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Loops.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-ProductLines">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ProductLines.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Recursive">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Recursive.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Sequentialized">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Sequentialized.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-XCSP">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-XCSP.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+          <tasks name="ReachSafety-Combinations">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Combinations.set</includesfile>
+            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
+          </tasks>
+        </rundefinition>
+      </benchmark>' > gdart-llvm.xml
+    - cat gdart-llvm.xml
+    - /data/benchexec/contrib/vcloud-benchmark.py
+      --vcloudMaster $VCLOUD_MASTER
+      --vcloudClientHeap 1560
+      --vcloudAdditionalFiles
+        ./gdart-llvm
+        /data/sv-benchmarks/c/ReachSafety-BitVectors.set
+        /data/sv-benchmarks/c/properties/unreach-call.prp
+        /data/sv-benchmarks/c/bitvector
+        /data/sv-benchmarks/c/bitvector-regression
+        /data/sv-benchmarks/c/bitvector-loops
+      --vcloudJar /srv/vcloud/lib/vcloud.jar
+      --no-container
+      --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
+    - $(cat vcloud.run | grep table-generator)
+  artifacts:
+    paths:
+      - results
+  dependencies:
+    - build
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+      when: on_success
