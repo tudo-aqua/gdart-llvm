@@ -34,33 +34,9 @@ build:
     - mvn package
     - popd
 
-    # prepare artifact
-    - mkdir -p gdart-llvm/dse/target
-    - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
-    - mkdir -p gdart-llvm/tracer/target
-    - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
-    - mv ./executor.sh gdart-llvm
-    - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
-    - mv ./verifier gdart-llvm
-
-    # print some info about artifact
-    - ls -la gdart-llvm/*
-    - du -h gdart-llvm
-  artifacts:
-    name: "gdart-llvm"
-    paths:
-      - gdart-llvm
-
-
-sv-comp-short:
-  stage: release
-  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
-  script:
-    - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
-    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
-
     # install necessary tools (wget)
-    - apt install -qy wget
+    - apt-get update
+    - apt-get install -qy wget
 
     # prepare Clang
     - export CLANG_VERSION=14.0.0
@@ -81,6 +57,33 @@ sv-comp-short:
     - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
     - ${GRAALVM_PATH}/lib/installer/bin/gu -L install llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
 
+    # prepare artifact
+    - mkdir -p gdart-llvm/dse/target
+    - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
+    - mkdir -p gdart-llvm/tracer/target
+    - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
+    - mv ${CLANG_PATH} gdart-llvm
+    - mv ${GRAALVM_PATH} gdart-llvm
+    - mv ./executor.sh gdart-llvm
+    - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
+    - mv ./verifier gdart-llvm
+
+    # print some info about artifact
+    - ls -la gdart-llvm/*
+    - du -h gdart-llvm
+  artifacts:
+    name: "gdart-llvm"
+    paths:
+      - gdart-llvm
+
+
+sv-comp-short:
+  stage: release
+  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  script:
+    - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
+    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
+
     # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
     - >
       echo '<?xml version="1.0"?>
@@ -100,8 +103,6 @@ sv-comp-short:
       --vcloudClientHeap 1560
       --vcloudAdditionalFiles
         ./gdart-llvm
-        ${CLANG_PATH}
-        ${GRAALVM_PATH}
         /data/sv-benchmarks/c/ReachSafety-BitVectors.set
         /data/sv-benchmarks/c/properties/unreach-call.prp
         /data/sv-benchmarks/c/bitvector
