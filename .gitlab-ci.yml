@@ -40,7 +40,6 @@ build:
     - wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
     - tar -xf ${CLANG_NAME}.tar.xz
     - export CLANG_PATH=$(realpath ${CLANG_NAME})
-    - rm -r ${CLANG_PATH}/include
 
     # prepare GraalVM
     - export GRAALVM_VERSION=22.1.0
@@ -52,6 +51,13 @@ build:
     # add GraalVM LLVM support (automatic download only works for latest GraalVM version (22.2.0))
     - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
     - ${GRAALVM_PATH}/lib/installer/bin/gu -L install llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+    
+    # minification
+    - rm -r ${CLANG_PATH}/include
+    - find ${CLANG_PATH} -name *.a -delete
+    - find ${CLANG_PATH} -type f -exec strip -s '{}' ';'
+    - find ${GRAALVM_PATH} -name *.a -delete
+    - find ${GRAALVM_PATH} -type f -exec strip -s '{}' ';'
 
     # prepare artifact
     - mkdir -p gdart-llvm/dse/target
@@ -83,10 +89,10 @@ sv-comp-short:
     # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
     - >
       echo '<?xml version="1.0"?>
-      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-1.9.dtd">
+      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-2.3.dtd">
         <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
         <resultfiles>**.graphml</resultfiles>
-        <rundefinition name="sv-comp20_prop-reachsafety_bitvectors">
+        <rundefinition name="SV-COMP23_unreach-call">
           <tasks name="ReachSafety-BitVectors">
             <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-BitVectors.set</includesfile>
             <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
@@ -127,10 +133,10 @@ sv-comp-full:
     # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
     - >
       echo '<?xml version="1.0"?>
-      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-1.9.dtd">
+      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-2.3.dtd">
         <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
         <resultfiles>**.graphml</resultfiles>
-        <rundefinition name="sv-comp20_prop-reachsafety_bitvectors">
+        <rundefinition name="SV-COMP23_unreach-call">
           <tasks name="ReachSafety-Arrays">
             <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Arrays.set</includesfile>
             <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
@@ -187,11 +193,7 @@ sv-comp-full:
       --vcloudClientHeap 1560
       --vcloudAdditionalFiles
         ./gdart-llvm
-        /data/sv-benchmarks/c/ReachSafety-BitVectors.set
-        /data/sv-benchmarks/c/properties/unreach-call.prp
-        /data/sv-benchmarks/c/bitvector
-        /data/sv-benchmarks/c/bitvector-regression
-        /data/sv-benchmarks/c/bitvector-loops
+        /data/sv-benchmarks/c/
       --vcloudJar /srv/vcloud/lib/vcloud.jar
       --no-container
       --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
