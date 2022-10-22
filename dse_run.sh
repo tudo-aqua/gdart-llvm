@@ -1,18 +1,19 @@
 #!/bin/bash
 
-echo "${*}" # debug
-
-if [ "$1" == "-v" ]; then
-    echo "gdart-llvm-0.1"
-    exit
-fi
-
 # set paths
 OFFSET=$(dirname "${BASH_SOURCE[0]}")
 if [[ -z "${OFFSET}" ]]; then
     OFFSET="."
 fi
-echo OFFSET="${OFFSET}"
+# echo OFFSET="${OFFSET}"
+
+if [ "$1" == "-v" ]; then
+    echo -n "gdart-llvm-0.1-"
+    cat "${OFFSET}/version.txt"
+    exit
+fi
+
+echo "${*}" # debug
 
 if [[ -f "/usr/bin/clang" ]]; then
     CLANG_PATH=/usr/bin

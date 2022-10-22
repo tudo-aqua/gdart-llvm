@@ -58,6 +58,13 @@ build:
     - find ${CLANG_PATH} -type f -exec strip -s '{}' ';'
     - find ${GRAALVM_PATH} -name *.a -delete
     - find ${GRAALVM_PATH} -type f -exec strip -s '{}' ';'
+    
+    # license + version files
+    - mkdir -p gdart-llvm
+    - wget https://www.apache.org/licenses/LICENSE-2.0.txt -O gdart-llvm/LICENSE.Apache-2.0
+    - wget https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -O gdart-llvm/LICENSE.GPLv2
+    - mv LICENSE.SV-COMP gdart-llvm/LICENSE
+    - git rev-parse --short HEAD > gdart-llvm/version.txt
 
     # prepare artifact
     - mkdir -p gdart-llvm/dse/target
@@ -205,4 +212,4 @@ sv-comp-full:
     - build
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
-      when: on_success
+      when: never
