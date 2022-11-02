@@ -5,7 +5,6 @@ OFFSET=$(dirname "${BASH_SOURCE[0]}")
 if [[ -z "${OFFSET}" ]]; then
     OFFSET="."
 fi
-# echo OFFSET="${OFFSET}"
 
 if [ "$1" == "-v" ]; then
     echo -n "gdart-llvm-0.1-"
@@ -13,21 +12,25 @@ if [ "$1" == "-v" ]; then
     exit
 fi
 
-echo "${*}" # debug
+set -x
 
-if [[ -f "/usr/bin/clang" ]]; then
-    CLANG_PATH=/usr/bin
-else
-    CLANG_PATH=gdart-llvm/clang+llvm/bin
-fi
+echo OFFSET="${OFFSET}"
+
+echo "args: ${*}" # debug
+
+#if [[ -f "/usr/bin/clang" ]]; then
+#    CLANG_PATH=/usr/bin
+#else
+    CLANG_PATH="${OFFSET}/clang+llvm/bin"
+#fi
 export CLANG_PATH
 echo CLANG_PATH="${CLANG_PATH}"
 
-if [[ -d "/usr/lib/jvm/java-11-graalvm" ]]; then
-    JAVA_HOME=/usr/lib/jvm/java-11-graalvm
-else
-    JAVA_HOME=gdart-llvm/graalvm-ce
-fi
+#if [[ -d "/usr/lib/jvm/java-11-graalvm" ]]; then
+#    JAVA_HOME=/usr/lib/jvm/java-11-graalvm
+#else
+    JAVA_HOME="${OFFSET}/graalvm-ce"
+#fi
 export JAVA_HOME
 echo JAVA_HOME="${JAVA_HOME}"
 
@@ -72,11 +75,11 @@ for LOGFILE in *.{log,err,graphml}; do
 done
 echo "# # # # # # #"
 
-complete=$(cat _gdart.log | grep -a "END OF OUTPUT")
-errors=$(cat _gdart.log | grep -a ERROR | grep -E -a "assertion violated|error encountered" | cut -d '.' -f 3)
-buggy=$(cat _gdart.log | grep -a BUGGY | cut -d '.' -f 2)
-diverged=$(cat _gdart.log | grep -a DIVERGED | cut -d '.' -f 2)
-skipped=$(cat _gdart.log | grep -a SKIPPED | egrep -v "assumption violation" | cut -d '.' -f 3)
+complete=$(grep -a "END OF OUTPUT" _gdart.log)
+errors=$(grep -a ERROR _gdart.log | grep -E -a "assertion violated|error encountered" | cut -d '.' -f 3)
+buggy=$(grep -a BUGGY _gdart.log | cut -d '.' -f 2)
+diverged=$(grep -a DIVERGED _gdart.log | cut -d '.' -f 2)
+skipped=$(grep -a SKIPPED _gdart.log | grep -E -v "assumption violation" | cut -d '.' -f 3)
 
 echo "complete: $complete"
 echo "err: $errors"
@@ -87,13 +90,13 @@ echo "skipped: $skipped"
 if [[ -n "$errors" ]]; then
   echo "Errors:"
   echo "$errors"
-  err=$(echo $errors | wc -l)
+  err=$(echo "$errors" | wc -l)
 fi
 
 if [[ ! "$err" -eq "0" ]]; then
     echo "== ERROR"
 else
-    if [[ -z $buggy ]] && [[ -z $skipped ]] && [[ ! -z $complete ]] && [[ -z $diverged ]]; then
+    if [[ -z $buggy ]] && [[ -z $skipped ]] && [[ -n $complete ]] && [[ -z $diverged ]]; then
         echo "== OK"
     else
         echo "== DONT-KNOW"
