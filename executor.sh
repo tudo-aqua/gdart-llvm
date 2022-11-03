@@ -6,12 +6,7 @@ if [[ -z "${OFFSET}" ]]; then
     OFFSET="."
 fi
 
-#if [[ -d "/usr/lib/jvm/java-11-graalvm" ]]; then
-#    JAVA_HOME=/usr/lib/jvm/java-11-graalvm
-#else
-    JAVA_HOME="${OFFSET}/graalvm-ce"
-#fi
-export JAVA_HOME
+JAVA_HOME="${OFFSET}/graalvm-ce"
 
 # prepare arguments
 declare -a ARGUMENTS

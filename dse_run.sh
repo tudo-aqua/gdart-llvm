@@ -15,39 +15,39 @@ fi
 set -x
 
 echo OFFSET="${OFFSET}"
+echo "args: ${*}"
 
-echo "args: ${*}" # debug
+# determine tool paths
+CLANG_PATH="${OFFSET}/clang+llvm/bin"
 
-#if [[ -f "/usr/bin/clang" ]]; then
-#    CLANG_PATH=/usr/bin
-#else
-    CLANG_PATH="${OFFSET}/clang+llvm/bin"
-#fi
-export CLANG_PATH
-echo CLANG_PATH="${CLANG_PATH}"
+CLANG="${CLANG_PATH}"/clang-14 # the clang symlink is broken by SV-COMP infra
+LLVM_LINK="${CLANG_PATH}"/llvm-link
+LLVM_AS="${CLANG_PATH}"/llvm-as
 
-#if [[ -d "/usr/lib/jvm/java-11-graalvm" ]]; then
-#    JAVA_HOME=/usr/lib/jvm/java-11-graalvm
-#else
-    JAVA_HOME="${OFFSET}/graalvm-ce"
-#fi
-export JAVA_HOME
-echo JAVA_HOME="${JAVA_HOME}"
+"${CLANG}" --version
+"${LLVM_LINK}" --version
+"${LLVM_AS}" --version
+
+JAVA_HOME="${OFFSET}/graalvm-ce"
+JAVA="${JAVA_HOME}"/bin/java
+"${JAVA}" -version
 
 # compile C input files to LLVM bitcode
 C_INPUT_FILES=("${@:2}")
 declare -a LLVM_INPUT_FILES
 for C_INPUT_FILE in "${C_INPUT_FILES[@]}"; do
-    (time ( { \
-        "${CLANG_PATH}"/clang -S -emit-llvm -o "${C_INPUT_FILE%.*}.ll" "${C_INPUT_FILE}"; \
-        "${CLANG_PATH}"/llvm-link -S -o="${C_INPUT_FILE%.*}.ll" "${C_INPUT_FILE%.*}.ll" "${OFFSET}/verifier/verifier.ll"; \
-        "${CLANG_PATH}"/llvm-as "${C_INPUT_FILE%.*}.ll"; \
-    } 2>&3 ) ) 3>&2 2>"time_$(basename "${C_INPUT_FILE}").log"
-    LLVM_INPUT_FILES+=("${C_INPUT_FILE%.*}.bc")
+    C_FILENAME="${C_INPUT_FILE##*/}"
+    BASE_FILENAME="${C_FILENAME%.*}"
+
+    "${CLANG}" -S -emit-llvm -o "${BASE_FILENAME}.ll" "${C_INPUT_FILE}" || exit
+    "${LLVM_LINK}" -S -o="${BASE_FILENAME}.ll" "${BASE_FILENAME}.ll" "${OFFSET}/verifier/verifier.ll" || exit
+    "${LLVM_AS}" "${BASE_FILENAME}.ll" || exit
+
+    LLVM_INPUT_FILES+=("${BASE_FILENAME}.bc")
 done
 
 # run DSE
-"${JAVA_HOME}"/bin/java -jar "${OFFSET}/dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar" \
+"${JAVA}" -jar "${OFFSET}/dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar" \
     -Ddse.executor="${OFFSET}/executor.sh" \
     -Ddse.executor.args="${LLVM_INPUT_FILES[*]}" \
     -Ddse.terminate.on="assertion|error" \
@@ -55,13 +55,11 @@ done
     -Ddse.dp=z3 \
     -Ddse.explore=BFS \
     -Ddse.witness=true \
-    -Ddse.dp=multi \
     -Ddse.bounds=true \
     -Ddse.bounds.iter=6 \
     -Ddse.bounds.step=6 \
     -Djconstraints.multi=disableUnsatCoreChecking=true \
-    > _gdart.log \
-    2> _gdart.err
+    > >(tee _gdart.log) 2> >(tee _gdart.err >&2)
 
 # output (adapted from run-gdart.sh)
 # remove non-printable characters from log
