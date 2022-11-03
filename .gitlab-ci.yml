@@ -71,7 +71,8 @@ build:
     - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
     - mkdir -p gdart-llvm/tracer/target
     - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
-    - mv ${CLANG_PATH} gdart-llvm/clang+llvm
+    - mkdir -p gdart-llvm/clang+llvm/bin
+    - mv ${CLANG_PATH}/bin/{clang-14,llvm-as,llvm-link} gdart-llvm/clang+llvm/bin
     - mv ${GRAALVM_PATH} gdart-llvm/graalvm-ce
     - mv ./executor.sh gdart-llvm
     - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
