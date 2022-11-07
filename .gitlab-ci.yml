@@ -1,5 +1,8 @@
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
+  GRADLE_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.gradle.daemon=false"
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
 
 stages:
   - build
@@ -8,15 +11,23 @@ stages:
 build:
   stage: build
   image: $CI_REGISTRY/psyco/gdart/development:21.2.0
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths:
+      - .gradle
+      - .m2/repository
+      - downloads
+  before_script:
+    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+    
   script:
     - git submodule update --init --recursive
 
     # use OpenJDK for compatibility with newer GraalVM version (22.1.0)
-    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 
     # build (patched version of) JConstraints (dependency of DSE and tracer)
     - pushd jconstraints-custom
-    - ./gradlew
+    - ./gradlew --build-cache
         -x :jconstraints-core:verifyGoogleJavaFormat
         -x :jconstraints-core:test
         -x :jconstraints-z3:test
@@ -25,55 +36,60 @@ build:
     - popd
 
     # build DSE
+    - mkdir -p gdart-llvm/dse/target
     - pushd dse
     - mvn package
+    - mv target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ../gdart-llvm/dse/target
     - popd
 
     # build tracer
+    - mkdir -p gdart-llvm/tracer/target
     - pushd tracer
     - mvn package
     - popd
+    - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
 
     # prepare Clang
+    - mkdir -p downloads gdart-llvm/clang+llvm/bin
     - export CLANG_VERSION=14.0.0
     - export CLANG_NAME=clang+llvm-${CLANG_VERSION}-x86_64-linux-gnu-ubuntu-18.04
-    - wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
-    - tar -xf ${CLANG_NAME}.tar.xz
+    - wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
+           -cO downloads/clang+llvm-${CLANG_VERSION}.tar.xz
+    - tar -xvf downloads/clang+llvm-${CLANG_VERSION}.tar.xz
     - export CLANG_PATH=$(realpath ${CLANG_NAME})
+    - mv ${CLANG_PATH}/bin/{clang-14,llvm-as,llvm-link} gdart-llvm/clang+llvm/bin
+    - strip -s gdart-llvm/clang+llvm/bin/{clang-14,llvm-as,llvm-link}
 
     # prepare GraalVM
+    - mkdir -p downloads gdart-llvm
     - export GRAALVM_VERSION=22.1.0
     - export GRAALVM_NAME=graalvm-ce-java11-linux-amd64-${GRAALVM_VERSION}
-    - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/${GRAALVM_NAME}.tar.gz
-    - tar -xzf ${GRAALVM_NAME}.tar.gz
+    - wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/${GRAALVM_NAME}.tar.gz
+           -cO downloads/graalvm-ce-${GRAALVM_VERSION}.tar.gz
+    - tar -xvf downloads/graalvm-ce-${GRAALVM_VERSION}.tar.gz
     - export GRAALVM_PATH=$(realpath ${GRAALVM_NAME/-linux-amd64/})
 
     # add GraalVM LLVM support (automatic download only works for latest GraalVM version (22.2.0))
-    - wget -q https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
-    - ${GRAALVM_PATH}/lib/installer/bin/gu -L install llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+    - wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+           -cO downloads/graalvm-llvm-${GRAALVM_VERSION}.jar
+    - ${GRAALVM_PATH}/lib/installer/bin/gu -L install downloads/graalvm-llvm-${GRAALVM_VERSION}.jar
     
-    # minification
-    - rm -r ${CLANG_PATH}/include
-    - find ${CLANG_PATH} -name *.a -delete
-    - find ${CLANG_PATH} -type f -exec strip -s '{}' ';'
+    # minify and move GraalVM
     - find ${GRAALVM_PATH} -name *.a -delete
     - find ${GRAALVM_PATH} -type f -exec strip -s '{}' ';'
+    - mv ${GRAALVM_PATH} gdart-llvm/graalvm-ce
     
     # license + version files
-    - mkdir -p gdart-llvm
-    - wget https://www.apache.org/licenses/LICENSE-2.0.txt -O gdart-llvm/LICENSE.Apache-2.0
-    - wget https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -O gdart-llvm/LICENSE.GPLv2
+    - mkdir -p downloads gdart-llvm
+    - wget https://www.apache.org/licenses/LICENSE-2.0.txt -cO downloads/LICENSE.Apache-2.0
+    - cp downloads/LICENSE.Apache-2.0 gdart-llvm
+    - wget https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -cO downloads/LICENSE.GPLv2
+    - cp downloads/LICENSE.GPLv2 gdart-llvm
     - mv LICENSE.SV-COMP gdart-llvm/LICENSE
     - git rev-parse --short HEAD > gdart-llvm/version.txt
 
-    # prepare artifact
-    - mkdir -p gdart-llvm/dse/target
-    - mv ./dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar ./gdart-llvm/dse/target
-    - mkdir -p gdart-llvm/tracer/target
-    - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
-    - mkdir -p gdart-llvm/clang+llvm/bin
-    - mv ${CLANG_PATH}/bin/{clang-14,llvm-as,llvm-link} gdart-llvm/clang+llvm/bin
-    - mv ${GRAALVM_PATH} gdart-llvm/graalvm-ce
+    # scripts and verifier
+    - mkdir -p gdart-llvm
     - mv ./executor.sh gdart-llvm
     - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
     - mv ./verifier gdart-llvm
@@ -122,7 +138,10 @@ sv-comp-short:
       --no-container
       --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
     - $(cat vcloud.run | grep table-generator)
+    - ./vcloud2junit.py results/gdart-llvm.*.xml.bz2 junit.xml
   artifacts:
+    reports:
+      junit: junit.xml
     paths:
       - results
   dependencies:
