@@ -1,31 +1,19 @@
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
-  GRADLE_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.gradle.daemon=false"
-  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
 
-stages:
-  - build
-  - release
-
-build:
-  stage: build
-  image: $CI_REGISTRY/psyco/gdart/development:21.2.0
+build-java:
+  image: maven:3-eclipse-temurin-11
   cache:
     key: $CI_COMMIT_REF_SLUG
     paths:
       - .gradle
       - .m2/repository
-      - downloads
-  before_script:
-    - export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    
+  variables:
+    GRADLE_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.gradle.daemon=false"
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+    MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
   script:
-    - git submodule update --init --recursive
-
-    # use OpenJDK for compatibility with newer GraalVM version (22.1.0)
-
-    # build (patched version of) JConstraints (dependency of DSE and tracer)
     - pushd jconstraints-custom
     - ./gradlew --build-cache
         -x :jconstraints-core:verifyGoogleJavaFormat
@@ -49,66 +37,149 @@ build:
     - popd
     - mv ./tracer/target/tracer-1.0.jar ./gdart-llvm/tracer/target
 
-    # prepare Clang
+  artifacts:
+    paths:
+      - gdart-llvm
+
+get-clang:
+  image: alpine
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths:
+      - downloads
+  before_script:
+    - apk add binutils wget
+  script:
     - mkdir -p downloads gdart-llvm/clang+llvm/bin
     - export CLANG_VERSION=14.0.0
     - export CLANG_NAME=clang+llvm-${CLANG_VERSION}-x86_64-linux-gnu-ubuntu-18.04
-    - wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
+    - wget --progress=dot:giga
+           https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/${CLANG_NAME}.tar.xz
            -cO downloads/clang+llvm-${CLANG_VERSION}.tar.xz
-    - tar -xvf downloads/clang+llvm-${CLANG_VERSION}.tar.xz
+    - tar -xf downloads/clang+llvm-${CLANG_VERSION}.tar.xz
     - export CLANG_PATH=$(realpath ${CLANG_NAME})
-    - mv ${CLANG_PATH}/bin/{clang-14,llvm-as,llvm-link} gdart-llvm/clang+llvm/bin
-    - strip -s gdart-llvm/clang+llvm/bin/{clang-14,llvm-as,llvm-link}
+    - mv "${CLANG_PATH}/bin/clang-14" "${CLANG_PATH}/bin/llvm-as" "${CLANG_PATH}/bin/llvm-link"
+         gdart-llvm/clang+llvm/bin
+    - find gdart-llvm/clang+llvm -type f -exec strip -s '{}' ';'
 
+  artifacts:
+    paths:
+      - gdart-llvm
+
+get-graalvm:
+  image: alpine
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths:
+      - downloads
+  before_script:
+    - apk add binutils gcompat wget
+  script:
     # prepare GraalVM
     - mkdir -p downloads gdart-llvm
     - export GRAALVM_VERSION=22.1.0
     - export GRAALVM_NAME=graalvm-ce-java11-linux-amd64-${GRAALVM_VERSION}
-    - wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/${GRAALVM_NAME}.tar.gz
+    - wget --progress=dot:giga
+           https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/${GRAALVM_NAME}.tar.gz
            -cO downloads/graalvm-ce-${GRAALVM_VERSION}.tar.gz
-    - tar -xvf downloads/graalvm-ce-${GRAALVM_VERSION}.tar.gz
+    - tar -xf downloads/graalvm-ce-${GRAALVM_VERSION}.tar.gz
     - export GRAALVM_PATH=$(realpath ${GRAALVM_NAME/-linux-amd64/})
 
     # add GraalVM LLVM support (automatic download only works for latest GraalVM version (22.2.0))
-    - wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
+    - wget --progress=dot:mega
+           https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/llvm-toolchain-installable-java11-linux-amd64-${GRAALVM_VERSION}.jar
            -cO downloads/graalvm-llvm-${GRAALVM_VERSION}.jar
     - ${GRAALVM_PATH}/lib/installer/bin/gu -L install downloads/graalvm-llvm-${GRAALVM_VERSION}.jar
-    
+
     # minify and move GraalVM
     - find ${GRAALVM_PATH} -name *.a -delete
     - find ${GRAALVM_PATH} -type f -exec strip -s '{}' ';'
     - mv ${GRAALVM_PATH} gdart-llvm/graalvm-ce
-    
-    # license + version files
+
+  artifacts:
+    paths:
+      - gdart-llvm
+
+get-licenses:
+  image: alpine
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths:
+      - downloads
+  before_script:
+    - apk add wget
+  script:
     - mkdir -p downloads gdart-llvm
     - wget https://www.apache.org/licenses/LICENSE-2.0.txt -cO downloads/LICENSE.Apache-2.0
     - cp downloads/LICENSE.Apache-2.0 gdart-llvm
     - wget https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -cO downloads/LICENSE.GPLv2
     - cp downloads/LICENSE.GPLv2 gdart-llvm
     - mv LICENSE.SV-COMP gdart-llvm/LICENSE
+
+  artifacts:
+    paths:
+      - gdart-llvm
+
+install-scripts:
+  image: alpine
+  before_script:
+    - apk add git
+  script:
+    - mkdir -p gdart-llvm
+
+    # version number
     - git rev-parse --short HEAD > gdart-llvm/version.txt
 
     # scripts and verifier
-    - mkdir -p gdart-llvm
     - mv ./executor.sh gdart-llvm
     - mv ./dse_run.sh gdart-llvm/run-gdart.sh # "run-gdart.sh" name is hardcoded in gdart.py
     - mv ./verifier gdart-llvm
 
-    # print some info about artifact
-    - ls -la gdart-llvm/*
-    - du -h gdart-llvm
   artifacts:
-    name: "gdart-llvm"
     paths:
       - gdart-llvm
 
-
-sv-comp-short:
-  stage: release
+run-with-vcloud:
   image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  needs: [build-java, get-clang, get-graalvm, get-licenses, install-scripts]
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+
+  parallel:
+    matrix:
+#      - TASK_SET: Arrays
+      - TASK_SET: BitVectors
+      - TASK_SET: ControlFlow
+#      - TASK_SET: ECA
+#      - TASK_SET: Floats
+#      - TASK_SET: Heap
+#      - TASK_SET: Loops
+#      - TASK_SET: ProductLines
+#      - TASK_SET: Recursive
+#      - TASK_SET: Sequentialized
+#      - TASK_SET: XCSP
+#      - TASK_SET: Combinations
+
+  before_script:
+    - apt-get install -y wget
+    - wget --progress=dot:mega https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+    - chmod +x /usr/bin/yq
   script:
     - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
-    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
+    - RUN_PWD="${PWD}"
+
+    - declare -a SOURCE_FILES
+    - pushd "${BENCHMARK_BASE}/c"
+    - grep -v '^#' "ReachSafety-${TASK_SET}.set"
+    - |+
+      for yaml in $(grep -v '^#' "ReachSafety-${TASK_SET}.set"); do
+        SOURCE_FILES+=("$(realpath --relative-to="${RUN_PWD}" "${yaml}")")
+        yaml_dir="$(dirname "${yaml}")"
+        for source in $(yq -N '.input_files' "${yaml}"); do
+          SOURCE_FILES+=("$(realpath --relative-to="${RUN_PWD}" "${yaml_dir}/${source}")")
+        done
+      done
+    - popd
 
     # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
     - >
@@ -117,23 +188,20 @@ sv-comp-short:
         <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
         <resultfiles>**.graphml</resultfiles>
         <rundefinition name="SV-COMP23_unreach-call">
-          <tasks name="ReachSafety-BitVectors">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-BitVectors.set</includesfile>
+          <tasks name="ReachSafety-'"${TASK_SET}"'">
+            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-'"${TASK_SET}"'.set</includesfile>
             <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
           </tasks>
         </rundefinition>
-      </benchmark>' > gdart-llvm.xml
-    - cat gdart-llvm.xml
+      </benchmark>' | tee gdart-llvm.xml
     - /data/benchexec/contrib/vcloud-benchmark.py
       --vcloudMaster $VCLOUD_MASTER
       --vcloudClientHeap 1560
       --vcloudAdditionalFiles
         ./gdart-llvm
-        /data/sv-benchmarks/c/ReachSafety-BitVectors.set
+        "/data/sv-benchmarks/c/ReachSafety-${TASK_SET}.set"
         /data/sv-benchmarks/c/properties/unreach-call.prp
-        /data/sv-benchmarks/c/bitvector
-        /data/sv-benchmarks/c/bitvector-regression
-        /data/sv-benchmarks/c/bitvector-loops
+        "${SOURCE_FILES[@]}"
       --vcloudJar /srv/vcloud/lib/vcloud.jar
       --no-container
       --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
@@ -144,92 +212,100 @@ sv-comp-short:
       junit: junit.xml
     paths:
       - results
-  dependencies:
-    - build
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-      when: on_success
 
-sv-comp-full:
-  stage: release
-  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+pack-archive:
+  image: alpine
+  needs: [build-java, get-clang, get-graalvm, get-licenses, install-scripts]
+  before_script:
+    - apk add p7zip
   script:
-    - export BENCHMARK_BASE=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/)
-    - echo "Benchmarks relative $BENCHMARK_BASE $PWD"
+    - 7z a -tzip -mx=9 gdart-llvm.zip gdart-llvm
 
-    # benchmark tool "gdart" references gdart.py, which executes "run-gdart.sh"
-    - >
-      echo '<?xml version="1.0"?>
-      <!DOCTYPE benchmark PUBLIC "+//IDN sosy-lab.org//DTD BenchExec benchmark 1.9//EN" "https://www.sosy-lab.org/benchexec/benchmark-2.3.dtd">
-        <benchmark tool="gdart" timelimit="15 min" memlimit="15 GB" cpuCores="8">
-        <resultfiles>**.graphml</resultfiles>
-        <rundefinition name="SV-COMP23_unreach-call">
-          <tasks name="ReachSafety-Arrays">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Arrays.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-BitVectors">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-BitVectors.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-ControlFlow">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ControlFlow.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-ECA">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ECA.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Floats">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Floats.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Heap">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Heap.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Loops">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Loops.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-ProductLines">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-ProductLines.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Recursive">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Recursive.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Sequentialized">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Sequentialized.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-XCSP">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-XCSP.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-          <tasks name="ReachSafety-Combinations">
-            <includesfile>'"${BENCHMARK_BASE}"'/c/ReachSafety-Combinations.set</includesfile>
-            <propertyfile>'"${BENCHMARK_BASE}"'/c/properties/unreach-call.prp</propertyfile>
-          </tasks>
-        </rundefinition>
-      </benchmark>' > gdart-llvm.xml
-    - cat gdart-llvm.xml
-    - /data/benchexec/contrib/vcloud-benchmark.py
-      --vcloudMaster $VCLOUD_MASTER
-      --vcloudClientHeap 1560
-      --vcloudAdditionalFiles
-        ./gdart-llvm
-        /data/sv-benchmarks/c/
-      --vcloudJar /srv/vcloud/lib/vcloud.jar
-      --no-container
-      --tool-directory ./gdart-llvm gdart-llvm.xml | tee vcloud.run
-    - $(cat vcloud.run | grep table-generator)
   artifacts:
     paths:
-      - results
-  dependencies:
-    - build
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-      when: never
+      - gdart-llvm.zip
+
+check-archive:
+  image: registry.gitlab.com/sosy-lab/benchmarking/competition-scripts/test:latest
+  needs: [pack-archive]
+  script:
+    - mkdir -p 2023
+    - mv gdart-llvm.zip 2023
+    - wget --progress=dot:mega https://github.com/sosy-lab/benchexec/archive/main.zip
+    - unzip main.zip
+    - PYTHONPATH=benchexec-main python3 competition-scripts/test/check-archives-svcomp.py 2023
+
+upload-archive:
+  image: alpine
+  needs: [pack-archive]
+
+  before_script:
+    - apk add coreutils curl
+  script:
+    # Upload artifact to a publicly accessible server
+    - curl -X PUT -u "${OWNCLOUD_USER}:${OWNCLOUD_PASSWORD}"
+           "${OWNCLOUD}/remote.php/webdav/gdart-llvm.zip" --data-binary @"gdart-llvm.zip"
+    # shareType 3 = public link
+    - curl -u "${OWNCLOUD_USER}:${OWNCLOUD_PASSWORD}"
+           "${OWNCLOUD}/ocs/v1.php/apps/files_sharing/api/v1/shares"
+           --data 'format=json'
+           --data 'path=/gdart-llvm.zip'
+           --data 'name=CoVeriTeam CI Link'
+           --data 'shareType=3'
+           --data "expireDate=$(date --date='tomorrow' '+%Y-%m-%d')"
+           -o share.json
+
+  artifacts:
+    paths:
+      - share.json
+
+run-with-coveriteam:
+  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  needs: [upload-archive]
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+
+  parallel:
+    matrix:
+      - SOURCE_FILE: c/bitvector/interleave_bits.i
+        EXPECTED_RESULT: "== OK"
+      - SOURCE_FILE: c/bitvector-regression/implicitfloatconversion.c
+        EXPECTED_RESULT: "== ERROR"
+
+  retry: 2 # CoVeriTeam seems to be flaky on occasion
+
+  before_script:
+    - apt-get install -y jq wget
+  script:
+    - SHARE="$(jq -r .ocs.data.url share.json)/download"
+
+    # download CoVeriTeam
+    - wget --progress=dot:mega https://gitlab.com/sosy-lab/software/coveriteam/-/archive/main/coveriteam-main.tar.bz2
+    - tar -xf coveriteam-main.tar.bz2
+
+    # Run CoVeriTeam
+    - pushd coveriteam-main/examples
+    - |+
+      echo 'imports:
+        - !include verifier_resource.yml
+      actor_name: gdart
+      toolinfo_module: "https://gitlab.com/sosy-lab/software/benchexec/-/raw/main/benchexec/tools/gdart.py"
+      options: []
+      archives:
+        - version: default
+          location: "'"${SHARE}"'"
+      format_version: "1.2"
+      ' | tee ../actors/gdart-llvm.yml
+    - ../bin/coveriteam verifier-C.cvt
+                     --input 'verifier_path=../actors/gdart-llvm.yml'
+                     --input 'verifier_version=default'
+                     --input "program_path=$(realpath --relative-to="${PWD}" "/data/sv-benchmarks/${SOURCE_FILE}")"
+                     --input "specification_path=$(realpath --relative-to="${PWD}" /data/sv-benchmarks/c/properties/unreach-call.prp)"
+                     --input 'data_model=ILP32'
+                     --remote --verbose | tee ../../coveriteam.log
+    - popd
+    - grep -Fx "${EXPECTED_RESULT}" coveriteam.log
+  artifacts:
+    paths:
+      - coveriteam.log
+
