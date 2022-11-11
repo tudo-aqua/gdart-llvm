@@ -82,6 +82,7 @@ import dse.tracer.recorder.event.DecisionEvent;
 import dse.tracer.recorder.event.DeclarationEvent;
 import dse.tracer.recorder.event.ErrorEvent;
 import dse.tracer.recorder.event.Event;
+import dse.tracer.recorder.event.ResultWitnessEvent;
 import dse.tracer.recorder.memory.Memory;
 import gov.nasa.jpf.constraints.api.Expression;
 import gov.nasa.jpf.constraints.api.Variable;
@@ -460,52 +461,68 @@ public class Recorder {
         }
         String fromFunctionName = returnFunctionNames.pop();
         String toFunctionName = node.getRootNode().getName();
+        printStream.println("INTERCEPTED RETURN " + fromFunctionName + " → " + toFunctionName);
         logger.info("scope: " + toFunctionName + " (return)");
-
         if (fromFunctionName.startsWith("@__VERIFIER_nondet_")) {
             // inject concolic return value
             TypeInfo typeInfo = null;
+            String returnValueWitness = null;
             switch (fromFunctionName) {
                 // TODO: add uchar, uint, ulong etc.
                 case "@__VERIFIER_nondet_bool":
                     typeInfo = TypeInfo.BOOLEAN;
                     returnValue = seeds.nextBoolean();
+                    returnValueWitness = (Boolean) returnValue ? "1" : "0";
                     break;
                 case "@__VERIFIER_nondet_char":
                     //typeInfo = TypeInfo.CHARACTER;
                     typeInfo = TypeInfo.BYTE;
                     //returnValue = seeds.nextCharacter();
                     returnValue = seeds.nextByte();
+                    returnValueWitness = ((Byte) returnValue).toString();
                     break;
                 case "@__VERIFIER_nondet_short":
                     typeInfo = TypeInfo.SHORT;
                     returnValue = seeds.nextShort();
+                    returnValueWitness = ((Short) returnValue).toString();
                     break;
                 case "@__VERIFIER_nondet_int":
                     typeInfo = TypeInfo.INTEGER;
                     returnValue = seeds.nextInteger();
+                    returnValueWitness = ((Integer) returnValue).toString();
                     break;
                 case "@__VERIFIER_nondet_uint":
                     typeInfo = TypeInfo.INTEGER;
                     returnValue = seeds.nextInteger();
+                    returnValueWitness = Integer.toUnsignedString((Integer) returnValue) + "u";
                     break;
                 case "@__VERIFIER_nondet_long":
                     typeInfo = TypeInfo.LONG;
                     returnValue = seeds.nextLong();
+                    returnValueWitness = ((Long) returnValue).toString() + "l";
                     break;
                 case "@__VERIFIER_nondet_ulong":
                     typeInfo = TypeInfo.LONG;
                     returnValue = seeds.nextLong();
+                    returnValueWitness = Long.toUnsignedString((Long) returnValue) + "ul";
                     break;
                 case "@__VERIFIER_nondet_float":
                     typeInfo = TypeInfo.FLOAT;
                     returnValue = seeds.nextFloat();
+                    returnValueWitness = ((Float) returnValue).toString() + "f";
                     break;
                 case "@__VERIFIER_nondet_double":
                     typeInfo = TypeInfo.DOUBLE;
                     returnValue = seeds.nextDouble();
+                    returnValueWitness = ((Double) returnValue).toString();
                     break;
             }
+
+            addEvent(new ResultWitnessEvent(
+                    toFunctionName.substring(1), // strip off @
+                    node.getRootNode().getSourceSection().getStartLine(),
+                    fromFunctionName.substring(1), // strip off @
+                    returnValueWitness));
 
             // add symbolic input variable to symbolic memory
             int variableCount = variableCounts.get(typeInfo);

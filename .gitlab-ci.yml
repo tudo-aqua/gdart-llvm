@@ -149,7 +149,7 @@ run-with-vcloud:
     matrix:
 #      - TASK_SET: Arrays
       - TASK_SET: BitVectors
-      - TASK_SET: ControlFlow
+#      - TASK_SET: ControlFlow
 #      - TASK_SET: ECA
 #      - TASK_SET: Floats
 #      - TASK_SET: Heap
@@ -212,6 +212,25 @@ run-with-vcloud:
       junit: junit.xml
     paths:
       - results
+
+lint-witnesses:
+  image: $CI_REGISTRY/sv-comp/sv-comp-base-images/vcloud-ready:latest
+  needs: [run-with-vcloud]
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get install -y python3-lxml python3-pycparser wget
+  script:
+    - wget --progress=dot:mega https://gitlab.com/sosy-lab/benchmarking/sv-witnesses/-/archive/main/sv-witnesses-main.tar.bz2
+    - tar -xf sv-witnesses-main.tar.bz2
+
+    - shopt -s globstar
+    - linterror=''
+    - |+
+      for graphml in results/**/witness.graphml; do
+        sv-witnesses-main/lint/witnesslinter.py --svcomp --witness "${graphml}" || linterror+='X'
+      done
+    - if [ "${linterror}" ]; then false; fi
 
 pack-archive:
   image: alpine

@@ -50,6 +50,7 @@ done
 "${JAVA}" -jar "${OFFSET}/dse/target/dse-0.0.1-SNAPSHOT-jar-with-dependencies.jar" \
     -Ddse.executor="${OFFSET}/executor.sh" \
     -Ddse.executor.args="${LLVM_INPUT_FILES[*]}" \
+    -Ddse.sourcefiles="${C_INPUT_FILES[*]}" \
     -Ddse.terminate.on="assertion|error" \
     -Ddse.b64encode=false \
     -Ddse.dp=z3 \

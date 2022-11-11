@@ -5,7 +5,7 @@
 [submodule "dse"]
 	path = dse
 	url = https://github.com/tudo-aqua/dse.git
-	branch = witness
+	branch = witness-llvm
 [submodule "competition-scripts"]
 	path = competition-scripts
 	url = https://gitlab.com/sosy-lab/benchmarking/competition-scripts.git
