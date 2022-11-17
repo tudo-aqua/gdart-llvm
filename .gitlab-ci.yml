@@ -228,6 +228,8 @@ lint-witnesses:
     - linterror=''
     - |+
       for graphml in results/**/witness.graphml; do
+        echo
+        echo "Linting witness: ${graphml}"
         sv-witnesses-main/lint/witnesslinter.py --svcomp --witness "${graphml}" || linterror+='X'
       done
     - if [ "${linterror}" ]; then false; fi
