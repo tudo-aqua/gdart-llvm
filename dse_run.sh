@@ -93,7 +93,7 @@ if [[ -n "$errors" ]]; then
 fi
 
 if [[ ! "$err" -eq "0" ]]; then
-    echo "== ERROR"
+    echo "== ERROR-UNREACH-CALL"
 else
     if [[ -z $buggy ]] && [[ -z $skipped ]] && [[ -n $complete ]] && [[ -z $diverged ]]; then
         echo "== OK"

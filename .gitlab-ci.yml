@@ -291,7 +291,7 @@ run-with-coveriteam:
       - SOURCE_FILE: c/bitvector/interleave_bits.i
         EXPECTED_RESULT: "== OK"
       - SOURCE_FILE: c/bitvector-regression/implicitfloatconversion.c
-        EXPECTED_RESULT: "== ERROR"
+        EXPECTED_RESULT: "== ERROR-UNREACH-CALL"
 
   retry: 2 # CoVeriTeam seems to be flaky on occasion
 
