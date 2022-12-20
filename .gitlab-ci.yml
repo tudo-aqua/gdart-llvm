@@ -115,6 +115,7 @@ get-licenses:
     - wget https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt -cO downloads/LICENSE.GPLv2
     - cp downloads/LICENSE.GPLv2 gdart-llvm
     - mv LICENSE.SV-COMP gdart-llvm/LICENSE
+    - mv LICENSE.CVC LICENSE.JSMTLIB LICENSE.Z3 gdart-llvm
     - mv README.SV-COMP.md gdart-llvm/README.md
 
   artifacts:
